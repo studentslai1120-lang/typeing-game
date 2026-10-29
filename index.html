@@ -5,16 +5,24 @@
 :root{--ink:#3b2f4a;--paper:#f1e6d3;--red:#c8432b;--gold:#f3a712;font-family:"Noto Serif TC",Georgia,"Microsoft JhengHei",serif;color:var(--ink);background:var(--paper);line-height:1.6}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 20% 0,#fff6e4,var(--paper) 60%)}
 main{max-width:920px;margin:auto;padding:22px 16px}
-h1{font-size:clamp(28px,5vw,44px);margin:0;font-weight:900;letter-spacing:.06em}p{margin:6px 0}
+h1{font-size:clamp(28px,5vw,44px);margin:0;font-weight:900;letter-spacing:.06em}p{margin:6px 0}i{font-style:normal}
 button{font:inherit;font-weight:600;padding:10px 22px;border:3px solid var(--ink);background:var(--gold);color:var(--ink);border-radius:999px;cursor:pointer;box-shadow:0 4px 0 var(--ink)}
 button:active{translate:0 3px;box-shadow:0 1px 0 var(--ink)}button.secondary{background:#fff8ea;padding:6px 14px;font-size:14px}button.on{background:var(--red);color:#fff}
+#overlay button.secondary{padding:10px 22px;font-size:inherit}
 :focus-visible{outline:3px solid var(--red);outline-offset:3px}
 .score{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}.score span{background:#fff8ea;border:2px solid var(--ink);padding:2px 14px;border-radius:999px}.score b{font-size:22px}
 .stage{position:relative;border:6px solid var(--ink);border-radius:22px;overflow:hidden;box-shadow:0 8px 0 #0002}
 canvas{display:block;width:100%;height:360px}.stage.wrong{animation:shake .2s}
-@keyframes shake{25%{translate:-6px}75%{translate:6px}}@media(prefers-reduced-motion:reduce){.stage.wrong{animation:none}}
-#overlay{position:absolute;inset:0;display:grid;place-content:center;gap:10px;text-align:center;background:#3b2f4acc;color:#fff8ea;padding:20px}
-#overlay h2{margin:0;font-size:32px}
+@keyframes shake{25%{translate:-6px}75%{translate:6px}}@keyframes tin{from{translate:30px 0;opacity:0}}
+@media(prefers-reduced-motion:reduce){.stage.wrong{animation:none}}
+#overlay{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:10px;text-align:center;background:#3b2f4acc;color:#fff8ea;padding:20px}
+#overlay.result{background:#3b2f4a99}
+#overlay.ach{align-content:start;overflow:auto;background:#3b2f4aee;padding:14px}
+#overlay.ach h2{font-size:24px}#overlay.ach #omsg{text-align:left;font-size:14px;line-height:1.6}
+#overlay h2{margin:0;font-size:34px}#omsg{white-space:pre-line;max-width:540px}
+#obtns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:6px}
+#toasts{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:2;pointer-events:none}
+.toast{background:#fff8ea;border:3px solid var(--ink);border-radius:12px;padding:4px 12px;font-weight:600;box-shadow:0 3px 0 var(--ink);animation:tin .3s}
 #hint{font-size:20px;text-align:center;min-height:2em;margin:12px 0;font-weight:600}
 .kb{background:#7a5a3c;padding:12px;border-radius:16px;overflow:auto;border:3px solid var(--ink)}
 .row{display:flex;justify-content:center;gap:6px;margin:6px 0}
@@ -25,107 +33,222 @@ canvas{display:block;width:100%;height:360px}.stage.wrong{animation:shake .2s}
 input[type=range]{accent-color:var(--red)}#stages{display:flex;gap:8px;flex-wrap:wrap}
 </style></head><body><main>
 <h1>氣球射手</h1>
-<p>氣球一個接一個飄下來。看亮起的按鍵、用對的手指按下，弓箭手就會射破它，+1 分。眼睛看螢幕，不要看鍵盤。</p>
-<div class="score"><span>分數 <b id="score">0</b></span><span>本關 <b id="prog">0</b>/10</span><span>按錯 <b id="wrong">0</b></span><span>漏掉 <b id="missed">0</b></span></div>
-<div class="stage" id="stage"><canvas id="cv" aria-label="遊戲畫面"></canvas>
-<div id="overlay"><h2>準備好了嗎？</h2><p>先把左手食指放在 F、右手食指放在 J。</p><button id="start" type="button">開始射氣球</button></div></div>
+<p>氣球從地面一個接一個飄上天，越飄越遠、看起來越小。看亮起的按鍵、用對的手指按下，弓箭手就會射破它，+1 分。沒射到的氣球會飄走。</p>
+<div class="score"><span>總分 <b id="score">0</b></span><span><i id="plabel">本關</i> <b id="prog">0/10</b></span><span>連擊 <b id="streak">0</b></span><span>速度 <b id="spd">×1.0</b></span><span>失誤 <b id="bad">0</b></span></div>
+<div class="stage" id="stage"><canvas id="cv" aria-label="遊戲畫面"></canvas><div id="toasts" aria-live="polite"></div>
+<div id="overlay"><h2 id="otitle"></h2><p id="omsg"></p><div id="obtns"></div></div></div>
 <p id="hint" role="status"></p>
 <div class="kb" id="kb" aria-label="螢幕鍵盤"></div>
-<div class="controls"><label>速度 <input type="range" id="speed" min="30" max="200" value="60"><span id="speedv">60</span></label><label><input type="checkbox" id="snd" checked>音效</label></div>
-<div id="stages" role="group" aria-label="選擇關卡"></div>
+<div class="controls"><label>基本速度 <input type="range" id="speed" min="30" max="200" value="60"><span id="speedv">60</span></label><label><input type="checkbox" id="snd" checked>音效</label></div>
+<div id="stages" role="group" aria-label="選擇關卡或模式"></div>
 </main><script>
 const $=id=>document.getElementById(id);
 const ROWS=['QWERTYUIOP','ASDFGHJKL','ZXCVBNM'];
 const STAGES=[['第1關 ASDF','ASDF'],['第2關 JKL','JKL'],['第3關 GH','GH'],['第4關 中間列','ASDFGHJKL'],['第5關 上排','QWERTYUIOP'],['第6關 下排','ZXCVBNM'],['第7關 全部','ABCDEFGHIJKLMNOPQRSTUVWXYZ']];
+const ACH=[['first','初試身手','擊破第一個氣球'],['combo20','連擊新手','連續擊破 20 個氣球不失誤'],['combo50','連擊高手','連續擊破 50 個氣球不失誤'],['perfect','零失誤','任何一關完美通關'],['clear','學成出師','完成全部 7 個關卡'],['allperfect','滿分射手','7 個關卡都完美通關過'],['e100','無盡新手','無盡模式達到 100 分'],['e500','無盡達人','無盡模式達到 500 分'],['e1000','無盡傳說','無盡模式達到 1000 分']];
 const FINGER={};
 [['左手小指','QAZ'],['左手無名指','WSX'],['左手中指','EDC'],['左手食指','RFVTGB'],['右手食指','YHNUJM'],['右手中指','IK'],['右手無名指','OL'],['右手小指','P']].forEach(([f,ks])=>[...ks].forEach(k=>FINGER[k]=f));
 const NEED=10,COLORS=['#e4572e','#f3a712','#29a3a3','#8e5bd0','#e2527f','#5aa75a'];
-let stage=0,score=0,hits=0,wrong=0,missed=0,running=false,cur=null,arrow=null,prev='',parts=[],texts=[],last=0;
+let mode='stage',stage=0,score=0,stageBase=0,hits=0,wrong=0,missed=0,streak=0,maxStreak=0,running=false,ending=false,spawnT=0,prev='';
+let balloons=[],arrows=[],ghosts=[],parts=[],texts=[],fw=[],spark=[],fwOn=false,fwT=0,bgP=0,last=0;
+
+// 存檔（成就、最高分）
+let SAVE={ach:{},done:[],perfect:[],best:0};
+try{const s=JSON.parse(localStorage.getItem('balloon-archer')||'null');if(s)SAVE=Object.assign(SAVE,s)}catch(e){}
+function save(){try{localStorage.setItem('balloon-archer',JSON.stringify(SAVE))}catch(e){}}
+
+// 早晨 → 中午 → 黃昏 → 夜晚
+const hex=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+const TH=[
+ {top:'#8ec5e8',mid:'#ffd1a8',bot:'#fff0c8',h1:'#7fb08a',h2:'#5f9a78',h3:'#3f7a5f',cel:'#fff3b0'},
+ {top:'#3f8fe0',mid:'#7cc0f0',bot:'#d6f0ff',h1:'#5fae6a',h2:'#43905a',h3:'#2f6f48',cel:'#fffbe0'},
+ {top:'#7f6fb8',mid:'#f0a0ae',bot:'#ffd9a0',h1:'#6a5a8e',h2:'#4b3f72',h3:'#2f2a4f',cel:'#fff1c1'},
+ {top:'#0b1030',mid:'#1c2754',bot:'#3a3f7a',h1:'#26305e',h2:'#1a2248',h3:'#0f1530',cel:'#f4f1e0'}
+].map(o=>{const r={};for(const k in o)r[k]=hex(o[k]);return r});
+function theme(p){const x=Math.min(p,.9999)*3,i=Math.floor(x),f=x-i,o={};
+ for(const k in TH[0])o[k]='rgb('+TH[i][k].map((v,j)=>Math.round(v+(TH[i+1][k][j]-v)*f))+')';return o}
+const clamp=v=>Math.min(Math.max(v,0),1);
+const STARS=Array.from({length:50},()=>({x:Math.random(),y:Math.random(),p:Math.random()*6,r:1+Math.random()*1.5}));
+const BIRDS=Array.from({length:4},(_,i)=>({x:Math.random()*900,y:30+Math.random()*90,v:18+Math.random()*14,p:i*1.7}));
+const FLIES=Array.from({length:16},()=>({x:Math.random(),y:.5+Math.random()*.35,p:Math.random()*6}));
+
 ROWS.forEach((r,i)=>{const d=document.createElement('div');d.className='row';d.style.marginLeft=i*18+'px';
  [...r].forEach(k=>{const e=document.createElement('div');e.className='key'+(i===1?' home':'');e.dataset.k=k;e.textContent=k;d.appendChild(e)});$('kb').appendChild(d)});
-STAGES.forEach(([n],i)=>{const b=document.createElement('button');b.type='button';b.className='secondary';b.textContent=n;b.onclick=()=>setStage(i);$('stages').appendChild(b)});
-function setStage(i){stage=i;hits=0;$('prog').textContent=0;[...$('stages').children].forEach((b,j)=>b.classList.toggle('on',j===i))}
+[...STAGES.map(s=>[s[0],()=>goStage(STAGES.indexOf(s),false)]),['無盡模式',()=>startEndless()],['成就',()=>showAch()]].forEach(([n,fn])=>{
+ const b=document.createElement('button');b.type='button';b.className='secondary';b.textContent=n;b.onclick=fn;$('stages').appendChild(b)});
+function markBtn(i){[...$('stages').children].forEach((b,j)=>b.classList.toggle('on',j===i))}
+
+// 難度：關卡越高越快；無盡模式分數越高越快、越多
+const mult=()=>mode==='endless'?1+Math.min(score*.012,2.2):1+stage*.2;
+const maxActive=()=>mode==='endless'?Math.min(1+Math.floor(score/20),5):1;
+const gap=()=>mode==='endless'?Math.max(.45,1.5-score*.004):.35;
+const pool=()=>mode==='endless'?STAGES[6][1]:STAGES[stage][1];
+function hud(){$('score').textContent=score;$('streak').textContent=streak;$('spd').textContent='×'+mult().toFixed(1);$('bad').textContent=wrong+missed;
+ if(mode==='endless'){$('plabel').textContent='最高';$('prog').textContent=Math.max(SAVE.best,score)}else{$('plabel').textContent='本關';$('prog').textContent=Math.min(hits,NEED)+'/'+NEED}}
+function setStage(i){stage=i;hits=0;wrong=0;missed=0;markBtn(i);hud()}
+
 let ac;function beep(f,d,type){if(!$('snd').checked)return;try{ac=ac||new AudioContext();const o=ac.createOscillator(),g=ac.createGain();o.type=type||'sine';o.frequency.value=f;g.gain.setValueAtTime(.18,ac.currentTime);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+d);o.connect(g).connect(ac.destination);o.start();o.stop(ac.currentTime+d)}catch(e){}}
 function mark(k){document.querySelectorAll('.key.target').forEach(e=>e.classList.remove('target'));if(k)document.querySelector('.key[data-k="'+k+'"]').classList.add('target')}
+function refreshTarget(){const t=balloons.filter(b=>!b.shot).sort((a,b)=>a.y-b.y)[0];mark(t?t.ch:null);$('hint').textContent=t?'用'+FINGER[t.ch]+'按 '+t.ch:''}
+function shake(){const s=$('stage');s.classList.add('wrong');setTimeout(()=>s.classList.remove('wrong'),200)}
+
+// 成就
+function unlock(id){if(SAVE.ach[id])return;SAVE.ach[id]=Date.now();save();const a=ACH.find(x=>x[0]===id);
+ const t=document.createElement('div');t.className='toast';t.textContent='成就解鎖：'+a[1];$('toasts').appendChild(t);setTimeout(()=>t.remove(),3500);
+ [784,1047].forEach((f,i)=>setTimeout(()=>beep(f,.15,'triangle'),i*120))}
+function checkHit(){unlock('first');if(streak>=20)unlock('combo20');if(streak>=50)unlock('combo50');
+ if(mode==='endless'){if(score>=100)unlock('e100');if(score>=500)unlock('e500');if(score>=1000)unlock('e1000');if(score>SAVE.best)SAVE.best=score}}
 
 const cv=$('cv'),ctx=cv.getContext('2d');let W=0,H=0;
 function resize(){const d=devicePixelRatio||1;W=cv.clientWidth;H=cv.clientHeight;cv.width=W*d;cv.height=H*d;ctx.setTransform(d,0,0,d,0,0)}
 addEventListener('resize',resize);resize();
 const bow=()=>({x:W/2,y:H-84});
+const pers=y=>Math.max(.5,.55+.45*y/H); // 近大遠小：越高越遠、越小
 
-function nextLetter(){
- const pool=STAGES[stage][1];let ch;do ch=pool[Math.floor(Math.random()*pool.length)];while(ch===prev&&pool.length>1);prev=ch;
- cur={ch,x:60+Math.random()*(W-120),y:-60,r:30,color:COLORS[Math.floor(Math.random()*COLORS.length)],ph:Math.random()*6,shot:false,dead:false};
- mark(ch);$('hint').textContent='用'+FINGER[ch]+'按 '+ch;
+// 畫面與流程
+function showOverlay(title,msg,btns,cls){
+ $('otitle').textContent=title;$('omsg').textContent=msg;const o=$('obtns');o.innerHTML='';
+ btns.forEach(([t,fn,sec])=>{const b=document.createElement('button');b.type='button';b.textContent=t;if(sec)b.className='secondary';b.onclick=fn;o.appendChild(b)});
+ $('overlay').className=cls||'';$('overlay').style.display='grid';o.firstChild.focus()}
+function clearField(){running=false;balloons=[];arrows=[];ghosts=[];fwOn=false;mark(null);$('hint').textContent=''}
+function showMenu(){clearField();markBtn(-1);
+ showOverlay('氣球射手','先把左手食指放在 F、右手食指放在 J。\n闖關模式：每關擊破 10 個氣球，零失誤就能完美通關，關卡越高氣球越快。\n無盡模式：一直射到第一次失誤為止，分數越高氣球越多越快。',[['闖關模式',start],['無盡模式',startEndless],['成就',showAch,1]])}
+function showAch(){clearField();const n=ACH.filter(a=>SAVE.ach[a[0]]).length;
+ showOverlay('成就 '+n+'/'+ACH.length,ACH.map(a=>(SAVE.ach[a[0]]?'★ ':'☆ ')+a[1]+'：'+a[2]).join('\n')+'\n無盡模式最高分：'+SAVE.best,[['返回選單',showMenu]],'ach')}
+function resetRun(){balloons=[];arrows=[];ghosts=[];fwOn=false;ending=false;running=true;spawnT=.2;$('overlay').style.display='none';refreshTarget()}
+function goStage(i,retry){mode='stage';if(retry)score=stageBase;else stageBase=score;setStage(i);resetRun()}
+function start(){score=0;streak=0;goStage(stage,false)}
+function startEndless(){mode='endless';score=0;streak=0;maxStreak=0;wrong=0;missed=0;markBtn(7);hud();resetRun()}
+function showResult(){
+ running=false;mark(null);$('hint').textContent='';
+ const perfect=!wrong&&!missed,lastStage=stage===STAGES.length-1,acc=Math.round(NEED/(NEED+wrong+missed)*100);
+ if(!SAVE.done.includes(stage))SAVE.done.push(stage);
+ if(perfect&&!SAVE.perfect.includes(stage))SAVE.perfect.push(stage);save();
+ if(perfect)unlock('perfect');if(SAVE.done.length>=STAGES.length)unlock('clear');if(SAVE.perfect.length>=STAGES.length)unlock('allperfect');
+ const again=['從第1關重新開始',()=>{score=0;streak=0;goStage(0,false)}];
+ if(perfect){
+  fwOn=true;fwT=0;[523,659,784,1047].forEach((f,i)=>setTimeout(()=>beep(f,.25,'triangle'),i*140));
+  showOverlay(lastStage?'全部通關！':'完美通關！',(lastStage?'最後一關也零失誤，你已經學會盲打了！':'沒有任何失誤，太厲害了！')+'\n本關擊破 '+NEED+' 個｜總分 '+score,
+   lastStage?[again]:[['下一關',()=>goStage(stage+1,false)],['重玩本關',()=>goStage(stage,true),1]],'result');
+ }else{
+  showOverlay('本關完成','按錯 '+wrong+' 次、漏掉 '+missed+' 個。\n零失誤才算完美通關，再挑戰一次吧！\n正確率 '+acc+'%｜總分 '+score,
+   [['再挑戰本關',()=>goStage(stage,true)],lastStage?[...again,1]:['進入下一關',()=>goStage(stage+1,false),1]],'result');
+ }
+}
+function gameOver(reason){if(!running)return;running=false;beep(reason==='wrong'?220:160,.4,'sawtooth');if(reason==='wrong')shake();
+ if(score>SAVE.best)SAVE.best=score;save();mark(null);$('hint').textContent='';
+ showOverlay('遊戲結束','得分 '+score+'（最高 '+SAVE.best+'）\n最高連擊 '+maxStreak+'｜最後速度 ×'+mult().toFixed(1)+'\n'+(reason==='wrong'?'按錯了按鍵':'漏掉了一個氣球'),[['再玩一次',startEndless],['回到選單',showMenu,1]],'result')}
+function mistake(type){
+ if(mode==='endless')return gameOver(type);
+ type==='wrong'?wrong++:missed++;streak=0;hud();
+ if(type==='wrong'){beep(220,.15,'sawtooth');shake()}else beep(160,.25,'triangle')}
+
+function spawn(){
+ const act=balloons.map(b=>b.ch);let pl=[...pool()].filter(c=>!act.includes(c));const np=pl.filter(c=>c!==prev);if(np.length)pl=np;
+ const ch=pl[Math.floor(Math.random()*pl.length)];prev=ch;
+ let x=60+Math.random()*(W-120);
+ for(let i=0;i<8&&balloons.some(b=>b.y>H*.4&&Math.abs(b.x-x)<70);i++)x=60+Math.random()*(W-120);
+ balloons.push({ch,x,y:H+10,r:30,color:COLORS[Math.floor(Math.random()*COLORS.length)],ph:Math.random()*6,shot:false,dead:false});
+ refreshTarget();
 }
 function burst(x,y,color,n){for(let i=0;i<n;i++){const a=Math.random()*6.28,s=80+Math.random()*220;parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-60,life:1,c:i%4?color:'#ffd27a',s:3+Math.random()*4})}}
-function finish(c,pop){c.dead=true;if(pop)burst(c.x,c.y,c.color,28);else burst(c.x,c.y,'#9a8fa8',12);setTimeout(()=>{if(running)nextLetter()},pop?250:400)}
+function pop(t){beep(880,.12);texts.push({x:t.dx||t.x,y:t.y,life:1});burst(t.dx||t.x,t.y,t.color,28);t.dead=true;
+ balloons=balloons.filter(o=>o!==t);spawnT=Math.max(spawnT,.25);refreshTarget();
+ if(ending&&!balloons.length)setTimeout(()=>{if(running&&mode==='stage')showResult()},250)}
+function hit(b){b.shot=true;score++;streak++;maxStreak=Math.max(maxStreak,streak);
+ if(mode==='stage'){hits++;if(hits>=NEED)ending=true}
+ const bw=bow(),a=Math.atan2(Math.min(b.y,bw.y-20)-bw.y,(b.dx||b.x)-bw.x);
+ arrows.push({x:bw.x+Math.cos(a)*32,y:bw.y+Math.sin(a)*32,a,t:b});beep(500,.1,'triangle');checkHit();hud();refreshTarget()}
 
-function hill(col,base,amp,fr,ph){ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(0,H);for(let x=0;x<=W;x+=8)ctx.lineTo(x,base+Math.sin(x/W*fr+ph)*amp);ctx.lineTo(W,H);ctx.closePath();ctx.fill()}
+// 繪圖
+function hillY(base,amp,fr,ph,x){return base+Math.sin(x/W*fr+ph)*amp}
+function hill(col,base,amp,fr,ph){ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(0,H);for(let x=0;x<=W;x+=8)ctx.lineTo(x,hillY(base,amp,fr,ph,x));ctx.lineTo(W,H);ctx.closePath();ctx.fill()}
+function trees(col,xs,sc,base,amp,fr,ph){ctx.fillStyle=col;xs.forEach(f=>{const px=f*W,py=hillY(base,amp,fr,ph,px)+2;
+ ctx.fillRect(px-2*sc,py-8*sc,4*sc,9*sc);
+ for(let i=0;i<3;i++){const w=(17-i*4)*sc,yb=py-6*sc-i*11*sc;ctx.beginPath();ctx.moveTo(px-w,yb);ctx.lineTo(px+w,yb);ctx.lineTo(px,yb-17*sc);ctx.closePath();ctx.fill()}})}
 function cloud(x,y,s){ctx.fillStyle='#fff3e0aa';ctx.beginPath();[[0,0,28],[26,-8,22],[-26,4,20],[48,6,16]].forEach(([dx,dy,r])=>{ctx.moveTo(x+dx*s+r*s,y+dy*s);ctx.arc(x+dx*s,y+dy*s,r*s,0,6.28)});ctx.fill()}
 function drawBalloon(c,t){
- const x=c.x+Math.sin(t/600+c.ph)*6,y=c.y,r=c.r;
- ctx.strokeStyle='#3b2f4a';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x,y+r+6);
- ctx.bezierCurveTo(x-10,y+r+22,x+10,y+r+34,x,y+r+52);ctx.stroke();
- const g=ctx.createRadialGradient(x-r*.35,y-r*.4,r*.1,x,y,r*1.1);g.addColorStop(0,'#fff8');g.addColorStop(.25,c.color);g.addColorStop(1,'#0006');
- ctx.fillStyle=c.color;ctx.beginPath();ctx.ellipse(x,y,r*.9,r,0,0,6.28);ctx.fill();
+ const s=pers(c.y),sw=Math.sin(t/600+c.ph),r=c.r;c.dx=c.x+sw*6*s;
+ ctx.save();ctx.translate(c.dx,c.y);ctx.rotate(sw*.06);ctx.scale(s,s);ctx.globalAlpha=.6+.4*clamp((s-.5)/.5);
+ ctx.strokeStyle='#3b2f4a';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(0,r+6);ctx.bezierCurveTo(-10,r+22,10,r+34,0,r+52);ctx.stroke();
+ const g=ctx.createRadialGradient(-r*.35,-r*.4,r*.1,0,0,r*1.1);g.addColorStop(0,'#fff8');g.addColorStop(.25,c.color);g.addColorStop(1,'#0006');
+ ctx.fillStyle=c.color;ctx.beginPath();ctx.ellipse(0,0,r*.9,r,0,0,6.28);ctx.fill();
  ctx.fillStyle=g;ctx.fill();ctx.lineWidth=3;ctx.stroke();
- ctx.fillStyle=c.color;ctx.beginPath();ctx.moveTo(x,y+r);ctx.lineTo(x-6,y+r+9);ctx.lineTo(x+6,y+r+9);ctx.closePath();ctx.fill();ctx.lineWidth=2;ctx.stroke();
- ctx.fillStyle='#fff8ea';ctx.font='900 34px "Noto Serif TC",Georgia,serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(c.ch,x,y+2);
- c.dx=x;
+ ctx.fillStyle=c.color;ctx.beginPath();ctx.moveTo(0,r);ctx.lineTo(-6,r+9);ctx.lineTo(6,r+9);ctx.closePath();ctx.fill();ctx.lineWidth=2;ctx.stroke();
+ ctx.fillStyle='#fff8ea';ctx.font='900 34px "Noto Serif TC",Georgia,serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(c.ch,0,2);
+ ctx.restore();
 }
 function drawArrow(len){ctx.lineCap='round';ctx.strokeStyle='#5b3a1e';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-len,0);ctx.lineTo(0,0);ctx.stroke();
  ctx.fillStyle='#c8432b';ctx.beginPath();ctx.moveTo(-len,0);ctx.lineTo(-len-8,-5);ctx.lineTo(-len+4,0);ctx.lineTo(-len-8,5);ctx.closePath();ctx.fill();
  ctx.fillStyle='#d8d2c8';ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(-9,-5);ctx.lineTo(-9,5);ctx.closePath();ctx.fill();ctx.strokeStyle='#3b2f4a';ctx.lineWidth=1.5;ctx.stroke()}
 function draw(t){
- const sky=ctx.createLinearGradient(0,0,0,H);sky.addColorStop(0,'#7f6fb8');sky.addColorStop(.55,'#f0a0ae');sky.addColorStop(1,'#ffd9a0');
+ const th=theme(bgP),night=clamp((bgP-.66)/.34);
+ const sky=ctx.createLinearGradient(0,0,0,H);sky.addColorStop(0,th.top);sky.addColorStop(.55,th.mid);sky.addColorStop(1,th.bot);
  ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
- const sx=W*.8,sy=H*.4,sg=ctx.createRadialGradient(sx,sy,10,sx,sy,110);sg.addColorStop(0,'#fff6cc');sg.addColorStop(.4,'#fff6cc66');sg.addColorStop(1,'#fff6cc00');
- ctx.fillStyle=sg;ctx.fillRect(0,0,W,H);ctx.fillStyle='#fff1c1';ctx.beginPath();ctx.arc(sx,sy,38,0,6.28);ctx.fill();
- cloud((t/80)%(W+200)-100,60,1);cloud((t/120+300)%(W+200)-100,120,.8);
- hill('#6a5a8e',H-120,18,9,0);hill('#4b3f72',H-80,16,7,2);
+ if(night>0){ctx.fillStyle='#fff8ea';STARS.forEach(s=>{ctx.globalAlpha=night*(.5+.5*Math.sin(t/500+s.p));ctx.fillRect(s.x*W,s.y*H*.6,s.r,s.r)});ctx.globalAlpha=1}
+ const sunA=clamp(1-(bgP-.7)/.2),moonA=clamp((bgP-.75)/.25);
+ if(sunA>0){const q=Math.min(bgP/.83,1),sx=W*(.12+.76*q),sy=H*.58-Math.sin(q*Math.PI)*H*.38;
+  ctx.globalAlpha=sunA;const sg=ctx.createRadialGradient(sx,sy,10,sx,sy,120);sg.addColorStop(0,th.cel);sg.addColorStop(.35,'rgba(255,240,190,.35)');sg.addColorStop(1,'rgba(255,240,190,0)');
+  ctx.fillStyle=sg;ctx.fillRect(0,0,W,H);ctx.fillStyle=th.cel;ctx.beginPath();ctx.arc(sx,sy,38,0,6.28);ctx.fill();ctx.globalAlpha=1}
+ if(moonA>0){const mx=W*.78,my=H*.26;ctx.globalAlpha=moonA;ctx.fillStyle=th.cel;ctx.beginPath();ctx.arc(mx,my,32,0,6.28);ctx.fill();
+  ctx.fillStyle='#d8d4c0';[[-10,-6,7],[8,8,5],[10,-12,4]].forEach(([dx,dy,r])=>{ctx.beginPath();ctx.arc(mx+dx,my+dy,r,0,6.28);ctx.fill()});ctx.globalAlpha=1}
+ ctx.globalAlpha=1-.6*night;cloud((t/80)%(W+200)-100,60,1);cloud((t/120+300)%(W+200)-100,120,.8);ctx.globalAlpha=1;
+ if(night<.7){ctx.globalAlpha=1-night/.7;ctx.strokeStyle='#3b2f4a';ctx.lineWidth=1.6;BIRDS.forEach(b=>{const x=(b.x+t*b.v/1000)%(W+80)-40,y=b.y+Math.sin(t/900+b.p)*8,f=Math.sin(t/120+b.p)*4;
+  ctx.beginPath();ctx.moveTo(x-8,y);ctx.quadraticCurveTo(x-4,y-4+f,x,y);ctx.quadraticCurveTo(x+4,y-4+f,x+8,y);ctx.stroke()});ctx.globalAlpha=1}
+ hill(th.h1,H-120,18,9,0);trees(th.h2,[.08,.2,.33,.67,.8,.93],.8,H-120,18,9,0);
+ hill(th.h2,H-80,16,7,2);trees(th.h3,[.06,.16,.27,.76,.86,.95],1,H-80,16,7,2);
+ if(night>0)FLIES.forEach((f,i)=>{const x=f.x*W+Math.sin(t/1100+f.p)*24,y=f.y*H+Math.cos(t/900+f.p)*14,a=night*(.4+.6*Math.sin(t/400+f.p*3)**2);
+  ctx.globalAlpha=a*.3;ctx.fillStyle='#ffe98a';ctx.beginPath();ctx.arc(x,y,7,0,6.28);ctx.fill();ctx.globalAlpha=a;ctx.beginPath();ctx.arc(x,y,2,0,6.28);ctx.fill()});ctx.globalAlpha=1;
+ balloons.forEach(b=>drawBalloon(b,t));ghosts.forEach(g=>drawBalloon(g,t));
  // 弓箭手
- const b=bow();let tx=b.x,ty=b.y-100;if(cur&&!cur.dead){tx=cur.dx||cur.x;ty=cur.y}
+ const b=bow(),tg=balloons.filter(o=>!o.shot).sort((p,q)=>p.y-q.y)[0];let tx=b.x,ty=b.y-100;if(tg){tx=tg.dx||tg.x;ty=Math.min(tg.y,b.y-20)}
  const ang=Math.atan2(ty-b.y,tx-b.x);
+ ctx.save();ctx.translate(b.x-10,b.y-2);ctx.rotate(-.35);ctx.fillStyle='#7a4a24';ctx.fillRect(-4,-14,8,24);ctx.strokeStyle='#c8432b';ctx.lineWidth=2;
+ [-2,0,2].forEach(o=>{ctx.beginPath();ctx.moveTo(o,-14);ctx.lineTo(o*1.8,-21);ctx.stroke()});ctx.restore();
  ctx.fillStyle='#2f2a4f';ctx.beginPath();ctx.moveTo(b.x-22,H-40);ctx.lineTo(b.x+22,H-40);ctx.lineTo(b.x+10,b.y+6);ctx.lineTo(b.x-10,b.y+6);ctx.closePath();ctx.fill();
  ctx.fillStyle='#f0c8a0';ctx.beginPath();ctx.arc(b.x,b.y-8,11,0,6.28);ctx.fill();
  ctx.fillStyle='#c8432b';ctx.beginPath();ctx.arc(b.x,b.y-12,12,Math.PI,0);ctx.fill();
  ctx.save();ctx.translate(b.x,b.y);ctx.rotate(ang);
- const pull=arrow?0:8;
+ const ready=!arrows.length,pull=ready?8:0;
  ctx.strokeStyle='#7a4a24';ctx.lineWidth=5;ctx.beginPath();ctx.arc(0,0,34,-1.15,1.15);ctx.stroke();
  ctx.strokeStyle='#fff8ea';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(34*Math.cos(-1.15),34*Math.sin(-1.15));ctx.lineTo(-pull,0);ctx.lineTo(34*Math.cos(1.15),34*Math.sin(1.15));ctx.stroke();
- if(!arrow){ctx.translate(32-pull,0);drawArrow(46)}
+ if(ready){ctx.translate(32-pull,0);drawArrow(46)}
  ctx.restore();
- hill('#2f2a4f',H-46,8,11,1);
- if(cur&&!cur.dead)drawBalloon(cur,t);
- if(arrow){ctx.save();ctx.translate(arrow.x,arrow.y);ctx.rotate(arrow.a);drawArrow(46);ctx.restore()}
+ hill(th.h3,H-46,8,11,1);
+ arrows.forEach(a=>{const sc=Math.min(1,pers(a.y)/pers(b.y));ctx.save();ctx.translate(a.x,a.y);ctx.rotate(a.a);ctx.scale(sc,sc);drawArrow(46);ctx.restore()});
  parts.forEach(p=>{ctx.globalAlpha=Math.max(p.life,0);ctx.fillStyle=p.c;ctx.fillRect(p.x,p.y,p.s,p.s)});ctx.globalAlpha=1;
- texts.forEach(p=>{ctx.globalAlpha=Math.max(p.life,0);ctx.fillStyle='#fff8ea';ctx.strokeStyle='#3b2f4a';ctx.lineWidth=4;ctx.font='900 28px "Noto Serif TC",serif';ctx.strokeText('+1',p.x,p.y);ctx.fillText('+1',p.x,p.y)});ctx.globalAlpha=1;
+ texts.forEach(p=>{ctx.globalAlpha=Math.max(p.life,0);ctx.fillStyle='#fff8ea';ctx.strokeStyle='#3b2f4a';ctx.lineWidth=4;ctx.font='900 28px "Noto Serif TC",serif';ctx.textAlign='center';ctx.strokeText('+1',p.x,p.y);ctx.fillText('+1',p.x,p.y)});ctx.globalAlpha=1;
+ fw.forEach(r=>{ctx.strokeStyle=r.c;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(r.x,r.y);ctx.lineTo(r.x,r.y+14);ctx.stroke()});
+ spark.forEach(s=>{ctx.globalAlpha=Math.max(s.life,0);ctx.fillStyle=s.c;ctx.beginPath();ctx.arc(s.x,s.y,2.5,0,6.28);ctx.fill()});ctx.globalAlpha=1;
 }
 function update(dt){
+ bgP+=((mode==='endless'?Math.min(score/500,1):stage/6)-bgP)*Math.min(1,dt*1.2);
  parts.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=500*dt;p.life-=dt*1.4});parts=parts.filter(p=>p.life>0);
  texts.forEach(p=>{p.y-=40*dt;p.life-=dt*1.2});texts=texts.filter(p=>p.life>0);
+ if(fwOn){fwT-=dt;if(fwT<=0){fw.push({x:W*(.12+Math.random()*.76),y:H-50,ty:H*(.12+Math.random()*.38),c:'hsl('+(Math.random()*360|0)+' 90% 65%)'});fwT=.3+Math.random()*.35}}
+ fw.forEach(r=>{r.y-=380*dt;if(r.y<=r.ty){r.dead=true;beep(110,.15,'sawtooth');for(let i=0;i<42;i++){const a=i/42*6.28,s=60+Math.random()*110;spark.push({x:r.x,y:r.y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,c:r.c})}}});fw=fw.filter(r=>!r.dead);
+ spark.forEach(s=>{s.x+=s.vx*dt;s.y+=s.vy*dt;s.vy+=110*dt;s.life-=dt*.8});spark=spark.filter(s=>s.life>0);
+ const sp=(+$('speed').value)*mult();
+ ghosts.forEach(g=>g.y-=sp*dt);ghosts=ghosts.filter(g=>g.y>-90);
  if(!running)return;
- if(cur&&!cur.dead){cur.y+=(+$('speed').value)*dt;
-  if(!cur.shot&&cur.y>H-130){missed++;$('missed').textContent=missed;beep(160,.25,'triangle');mark(null);finish(cur,false)}}
- if(arrow&&cur){const tx=cur.dx||cur.x,ty=cur.y,dx=tx-arrow.x,dy=ty-arrow.y,d=Math.hypot(dx,dy),step=1500*dt;
-  arrow.a=Math.atan2(dy,dx);
-  if(d<=step+cur.r*.7){beep(880,.12);texts.push({x:tx,y:ty,life:1});finish(cur,true);arrow=null}
-  else{arrow.x+=dx/d*step;arrow.y+=dy/d*step}}
+ if(!ending){spawnT-=dt;if(balloons.length<maxActive()&&spawnT<=0){spawn();spawnT=gap()}}
+ const gone=[];balloons.forEach(b=>{b.y-=sp*dt;if(!b.shot&&b.y<-30)gone.push(b)});
+ gone.forEach(b=>{if(!running)return;balloons=balloons.filter(o=>o!==b);
+  if(mode==='endless')return gameOver('missed');
+  ghosts.push({...b});b.dead=true;mistake('missed');spawnT=Math.max(spawnT,.3);refreshTarget()});
+ arrows=arrows.filter(a=>!a.t.dead);
+ arrows.forEach(a=>{const t=a.t,dx=(t.dx||t.x)-a.x,dy=t.y-a.y,d=Math.hypot(dx,dy),step=1500*dt;a.a=Math.atan2(dy,dx);
+  if(d<=step+t.r*pers(t.y)*.7){a.hit=true;pop(t)}else{a.x+=dx/d*step;a.y+=dy/d*step}});
+ arrows=arrows.filter(a=>!a.hit);
 }
 function loop(t){const dt=Math.min((t-last)/1000,.05);last=t;update(dt);draw(t);requestAnimationFrame(loop)}
 
-function start(){$('overlay').style.display='none';running=true;score=0;wrong=0;missed=0;arrow=null;cur=null;
- ['score','wrong','missed'].forEach(i=>$(i).textContent=0);setStage(stage);nextLetter()}
-$('start').onclick=start;
 $('speed').oninput=()=>$('speedv').textContent=$('speed').value;
-addEventListener('keydown',e=>{
- if(!running||!cur||cur.dead||cur.shot||e.ctrlKey||e.metaKey||e.altKey||!/^[a-z]$/i.test(e.key))return;
- if(e.key.toUpperCase()===cur.ch){
-  cur.shot=true;score++;hits++;$('score').textContent=score;$('prog').textContent=Math.min(hits,NEED);mark(null);beep(500,.1,'triangle');
-  const b=bow(),a=Math.atan2(cur.y-b.y,(cur.dx||cur.x)-b.x);arrow={x:b.x+Math.cos(a)*32,y:b.y+Math.sin(a)*32,a};
-  if(hits>=NEED&&stage<STAGES.length-1){setStage(stage+1);$('hint').textContent='過關！進入'+STAGES[stage][0]}
- }else{wrong++;$('wrong').textContent=wrong;beep(220,.15,'sawtooth');const s=$('stage');s.classList.add('wrong');setTimeout(()=>s.classList.remove('wrong'),200)}
-});
-setStage(0);requestAnimationFrame(t=>{last=t;loop(t)});
+function onKey(e){
+ if(!running||ending||e.ctrlKey||e.metaKey||e.altKey||!/^[a-z]$/i.test(e.key))return;
+ const b=balloons.find(o=>o.ch===e.key.toUpperCase()&&!o.shot);
+ if(b)hit(b);else mistake('wrong');
+}
+addEventListener('keydown',onKey);
+setStage(0);markBtn(-1);showMenu();requestAnimationFrame(t=>{last=t;loop(t)});
 </script></body></html>
